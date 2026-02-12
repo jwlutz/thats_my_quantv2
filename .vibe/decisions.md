@@ -157,7 +157,16 @@ The ultimate test: run identical RSI strategy through both engines on same data.
 - RED (reject): DSR p > 0.10 OR PBO > 0.55 OR NDR < 0.50
 - Location: `RobustnessReport` class
 
-### D20: CPCV Deferred Until ML Strategies
-**Decision:** Do not implement full CPCV now. PurgedKFold is sufficient.
-**Rationale:** CPCV is ~100x more expensive than PurgedKFold. Only needed when fitting ML classifiers on labeled barriers. Traditional parameter optimization uses PBO/CSCV instead.
-**Implementation:** Existing `PurgedKFold` in `paramsweep.py` remains the CV method.
+### D20: CPCV Implemented as Gold Standard for OOS Estimation (CORRECTED)
+**Decision:** Implement CPCV for OOS performance estimation. It is NOT just for ML strategies.
+**Rationale:** SME correction: PBO, CPCV, and WFE answer different questions:
+- PBO: "Is my parameter optimization overfit?" (tests selection bias)
+- CPCV: "Does this strategy generalize to unseen data?" (OOS performance estimate)
+- WFE: "How much performance degrades OOS?" (single rolling window, coarser)
+CPCV averages over 12,870 train/test paths vs WFE's ~5-10 steps, giving tighter confidence intervals. One walkforward can get lucky or unlucky; CPCV averages out that noise.
+**Implementation:**
+- Reuses block splitting from PBO (same CSCV machinery)
+- Takes T×1 return series (ONE strategy, not T×N like PBO)
+- Returns mean OOS Sharpe, std, 95% CI
+- Location: `pbo.py:compute_cpcv()`
+- Raises ValueError if T×N with N>1 passed (use compute_pbo for that)
