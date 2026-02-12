@@ -1,52 +1,64 @@
-# Current Task: Visual Checkpoint - Results.plot()
+# Current Task: Implement PBO via CSCV + Neighborhood Degradation
 
 ## Status: Complete
 
 ## Success Criteria
-- [x] `Results.plot()` produces a 2-panel figure (equity curve + drawdown)
-- [x] Benchmark comparison works if ticker provided
-- [x] `save_path` saves to file, `show=False` prevents display
-- [x] Tests verify: figure creation, subplot count, save functionality
-- [x] No regression in existing `plot_equity_curve()` and `plot_drawdown()` tests
+- [x] `pbo.py` implements Bailey et al. (2014) CSCV algorithm
+- [x] PBO accepts T×N return matrix, returns PBO scalar + logit distribution
+- [x] S=16 blocks by default, C(16,8)=12,870 combinations
+- [x] NDR computed at d=1 and d=2 Chebyshev distance
+- [x] CV (coefficient of variation) computed for each shell
+- [x] Unit tests verify: edge cases, known values, integration with paramsweep
+- [x] No test regressions (903 passed, 1 flaky pre-existing failure)
 
-## Files Changed
-- `thats_my_quantv1/backtester/results.py` - Added `plot()` method (lines 767-869)
-- `thats_my_quantv1/tests/test_plotting.py` - Added TestResultsPlot class (7 tests)
+## Implementation Plan
 
-## Key Decisions
-- Combined equity curve (top) and drawdown (bottom) in single figure with shared x-axis
-- Metrics summary box in upper-right of equity panel (Total Return, CAGR, Sharpe, Max DD, Trades, Win Rate)
-- Alpha vs benchmark shown when benchmark provided
-- Reused existing `_get_benchmark_data()` method
-- Height ratio 2:1 for equity:drawdown panels
-- Color scheme: Strategy blue (#2E86AB), Drawdown red (#E74C3C), Benchmark gray
+### Task 1: PBO via CSCV (~200 lines)
+Location: `thats_my_quantv1/backtester/pbo.py`
 
-## Adversarial Review Findings
-- Fixed: Duplicate benchmark data fetch - now fetches once and reuses
-- Verified: All 7 new tests pass
-- Verified: All 40 plotting tests pass (no regression)
+Algorithm:
+1. Accept return matrix M of shape (T, N)
+2. Split M row-wise into S=16 contiguous blocks
+3. Generate all C(S, S/2) = C(16,8) combinations
+4. For each combination:
+   - IS = concatenate S/2 blocks (preserve order)
+   - OOS = remaining S/2 blocks
+   - Compute Sharpe for all N strategies on IS data
+   - Identify n* = argmax(IS Sharpe)
+   - Compute Sharpe for all N strategies on OOS data
+   - Compute rank of n* in OOS Sharpe ranking
+   - Compute logit: λ = log(rank / (N - rank))
+5. PBO = fraction of combinations where λ < 0
 
-## Tests
-- 7 new tests in TestResultsPlot class
-- All 40 tests in test_plotting.py pass
-- 861 tests pass in full suite (1 skipped, 1 flaky test unrelated to this change)
+### Task 2: Neighborhood Degradation (~50 lines)
+Location: `thats_my_quantv1/backtester/pbo.py`
 
----
+Algorithm:
+1. Accept parameter sweep results DataFrame with param columns + Sharpe
+2. Find optimal parameter vector p*
+3. Compute Chebyshev distance for all grid points
+4. For d=1 shell: NDR(1) = mean(Sharpe) / Sharpe(p*), CV(1)
+5. For d=2 shell: NDR(2) = mean(Sharpe) / Sharpe(p*), CV(2)
+6. Return NDRResult dataclass
 
-# Previous Task: Vectorized Screening Engine (Complete)
+### Task 3: Tests
+Location: `thats_my_quantv1/tests/test_pbo.py`
 
-## Status: Complete
+Test cases:
+- Known PBO values (synthetic return matrix)
+- Edge case: all identical returns → PBO undefined
+- Edge case: one dominant strategy → verify warning
+- NDR with simple 3×3 grid
+- Integration with actual paramsweep output
 
-## Success Criteria (Hard Gates)
-- [x] **GATE 1**: `_sharpe`, `_cagr`, `_max_drawdown` produce byte-identical results to results.py
-- [x] `vectorized_rsi` matches StreamProcessor RSI within floating-point tolerance
-- [x] `resolve_signals` correctly handles entry/exit/same-bar/already-in-position
-- [x] `fast_backtest` on 5yr daily data completes in <100ms
-- [x] `sweep` with grid produces sorted results by Sharpe
-- [x] Validation contract: metrics verified against reference implementations
+## Files to Create/Change
+- `thats_my_quantv1/backtester/pbo.py` - NEW
+- `thats_my_quantv1/tests/test_pbo.py` - NEW
+- `thats_my_quantv1/backtester/__init__.py` - Add exports
 
-## Key Decisions
-- Metrics must match Results.py exactly (ddof=1, 252 periods/year)
-- RSI first tick returns NaN (prevents spurious entry signals)
-- Numba has pure Python fallback for environments without Numba
-- NEXT_BAR_OPEN fill timing shifts positions by 1 bar
+## Progress
+- [x] Documentation updated with SME corrections
+- [x] pbo.py created (370 lines)
+- [x] test_pbo.py created (42 tests)
+- [x] Tests passing (903 total, 42 new PBO tests)
+- [x] Exports added to __init__.py

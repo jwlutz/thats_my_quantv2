@@ -92,8 +92,8 @@ Same strategy interface, different compute paths. Not parent-child.
 | Fill at next-bar open for daily bars | Same-bar close = lookahead bias |
 | Slippage: σ·√(Q/V) for validation | Fixed for screening, add 10-20bps to vectorized screener |
 | Deflated Sharpe Ratio > Monte Carlo | Primary statistical gate |
-| CPCV > simple walkforward | Combinatorial Purged Cross-Validation |
-| PBO > heatmap eyeballing | Probability of Backtest Overfitting. PBO > 0.5 = overfit |
+| PBO via CSCV > heatmap eyeballing | PBO > 0.40 = suspicious, > 0.55 = reject. Uses Bailey et al. CSCV algorithm |
+| CPCV for ML only | CPCV is for ML model validation, NOT required for PBO |
 | No HMMs for regime detection | Unstable OOS. Observable indicators only. |
 | Survivorship bias awareness | 20%+ CAGR → <8% on momentum strategies |
 | Adjusted prices for backtesting | Unadjusted for price filters and dollar volume sizing |
@@ -115,10 +115,18 @@ Same strategy interface, different compute paths. Not parent-child.
 | Vectorized screening engine | ✅ 69 tests, cross-engine validated |
 | RSI Calculation class | ✅ Parity proven |
 | Visual checkpoint (matplotlib) | ✅ Results.plot() |
-| Robustness suite (DSR, CPCV, PBO) | ❌ |
-| Monte Carlo / bootstrap | ❌ |
-| Regime tagger | ❌ |
-| Parameter sweep + PBO | ❌ (paramsweep.py exists, needs PBO) |
+| Deflated Sharpe Ratio (DSR) | ✅ `paramsweep.py` |
+| Purged K-Fold CV | ✅ `paramsweep.py` |
+| Parameter Sweep (5 diagnostics) | ✅ `paramsweep.py` |
+| Walk-Forward Analysis | ✅ `walkforward.py` |
+| Monte Carlo (trade shuffle) | ✅ `results.py` |
+| Permutation Test | ✅ `results.py` |
+| Bootstrap Paths | ✅ `results.py` |
+| Regime Tagger | ✅ `regime.py` |
+| PBO via CSCV | ✅ `pbo.py` | Bailey et al. (2014) algorithm |
+| Neighborhood Degradation | ✅ `pbo.py` | NDR at d=1 and d=2 |
+| RobustnessVerdict | ✅ `pbo.py` | Traffic light system (GREEN/YELLOW/RED) |
+| CPCV (Combinatorial Purged CV) | ⚠️ Deferred | Only for ML strategies |
 | MCP server | ❌ |
 | Position sizing as separate layer | ⚠️ Partial |
 | Adjusted vs unadjusted prices | ❌ Data layer |
@@ -133,7 +141,7 @@ Same strategy interface, different compute paths. Not parent-child.
 
 1. ~~**Visual checkpoint**~~ ✅ `Results.plot()` implemented — unified 2-panel dashboard (equity + drawdown)
 
-2. **Robustness suite** — DSR (primary gate), permutation test (quick filter), bootstrap CI (drawdown risk), PBO + neighborhood degradation (parameter robustness), CPCV (serious validation), WFE diagnostic **← Next up**
+2. ~~**Robustness suite**~~ ✅ — DSR ✅, permutation test ✅, bootstrap CI ✅, WFE ✅, PBO ✅, NDR ✅, RobustnessVerdict ✅ | CPCV deferred (ML only)
 
 3. **MCP server** — Use official `mcp` Python SDK (FastMCP). Service layer emerges naturally from "what tools does Claude need?" Build as `thats_my_quant/service/` when needed.
 
@@ -198,7 +206,9 @@ Same strategy interface, different compute paths. Not parent-child.
 | Condition | Decision logic component (e.g., `GreaterThan(70)`) |
 | Welford's Algorithm | Numerically stable online algorithm for running mean/variance in O(1) |
 | DSR | Deflated Sharpe Ratio — adjusts for multiple testing |
-| CPCV | Combinatorial Purged Cross-Validation |
-| PBO | Probability of Backtest Overfitting |
+| CPCV | Combinatorial Purged Cross-Validation — for ML model validation |
+| CSCV | Combinatorially Symmetric Cross-Validation — algorithm for computing PBO |
+| PBO | Probability of Backtest Overfitting — fraction of combinations where IS-optimal underperforms OOS median |
+| NDR | Neighborhood Degradation Ratio — robustness metric: mean(Sharpe in neighborhood) / Sharpe(optimal) |
 | MAE/MFE | Maximum Adverse/Favorable Excursion |
 | WFE | Walk-Forward Efficiency |

@@ -72,3 +72,92 @@ The ultimate test: run identical RSI strategy through both engines on same data.
 ### D11: Service Layer Location
 **Decision:** When built, lives at `thats_my_quant/service/` inside monorepo.
 **Rationale:** Consistent with monorepo structure, single import path.
+
+---
+
+## Statistical Validation Decisions (2026-02-12)
+
+### D12: Deflated Sharpe Ratio as Primary Gate
+**Decision:** DSR per Bailey & López de Prado (2014) is the primary statistical significance test for parameter sweeps.
+**Rationale:** DSR answers "is this Sharpe ratio significant given how many combinations we tested?" — the core multiple testing problem in backtesting.
+**Implementation:**
+- Uses extreme value theory for expected max Sharpe under null
+- Corrects for non-normality (skewness, kurtosis)
+- p-value thresholds: <0.01 (highly sig), <0.05 (sig), <0.10 (marginal)
+- Location: `paramsweep.py:deflated_sharpe_ratio()`
+
+### D13: Purged K-Fold (Not CPCV) for Initial CV
+**Decision:** Implemented Purged K-Fold with embargo, not full Combinatorial Purged CV.
+**Rationale:** CPCV generates N-choose-K train/test combinations (~100x more backtests). PurgedKFold is sufficient for parameter sweep diagnostics. CPCV deferred until PBO implementation.
+**Implementation:**
+- 5 sequential folds (configurable)
+- purge_pct: removes training data near test boundary
+- embargo_pct: gap after test set
+- Location: `paramsweep.py:PurgedKFold`
+
+### D14: Three Monte Carlo Methods for Different Questions
+**Decision:** Implemented three distinct resampling methods, each answering a different question.
+**Rationale:** They're not interchangeable — each tests a specific hypothesis.
+**Implementation:**
+1. `monte_carlo()` — Trade sequence shuffling. Tests: "Is P&L order-dependent?" Useful for detecting trend-following vs mean-reversion characteristics.
+2. `permutation_test()` — Sign randomization on daily returns. Tests: "Is Sharpe significantly different from zero?" Quick filter before deeper analysis.
+3. `bootstrap_paths()` — Resampling with replacement. Produces: confidence intervals for return, drawdown, Sharpe. Answers: "How uncertain are these metrics?"
+- Location: `results.py`
+
+### D15: Walk-Forward Analysis as Operational Simulation
+**Decision:** WFA is explicitly positioned as operational simulation, NOT primary validation.
+**Rationale:** Per López de Prado (2018), WFA answers "how would live execution have looked?" — not "is this strategy real?" That's what DSR and CPCV answer.
+**Implementation:**
+- Rolling or anchored training windows
+- Stitched OOS equity curve
+- Walk-Forward Efficiency (WFE) per step
+- Parameter drift tracking
+- Location: `walkforward.py:WalkForward`
+
+### D16: Regime Tagger Uses Observable Indicators Only
+**Decision:** Regime detection uses SPY vs SMA (trend) and VIX percentile (volatility). No HMMs.
+**Rationale:** Per SME guidance: HMMs are unstable out-of-sample. Observable indicators are reproducible and have no hidden state estimation problems.
+**Implementation:**
+- Trend: SPY > 200-day SMA = bull, else bear
+- Volatility: VIX > 75th percentile (trailing 252 days) = high vol
+- Stores continuous signals alongside binary labels (future HMM upgrade path)
+- Location: `regime.py:RegimeTagger`
+
+---
+
+## PBO Implementation Decisions (2026-02-12)
+
+### D17: CSCV Algorithm for PBO (NOT CPCV)
+**Decision:** Use Bailey et al. (2014) CSCV algorithm, not Lopez de Prado (2018) CPCV.
+**Rationale:** CSCV operates on T×N return matrix directly — no purging/embargo needed. CPCV is for ML model validation where labels have temporal extent. They solve different problems.
+**Implementation:**
+- Input: T×N return matrix from parameter sweep (T time periods, N configurations)
+- Split into S=16 contiguous blocks (giving C(16,8)=12,870 combinations)
+- For each combination: IS half → find optimal config n* → compute OOS rank of n*
+- Logit: λ = log(rank / (N - rank))
+- PBO = fraction of combinations where λ < 0
+- Location: `pbo.py`
+
+### D18: Neighborhood Degradation Specification
+**Decision:** Use Chebyshev distance d≤2 with separate metrics for d=1 and d=2 shells.
+**Rationale:** Option B (ε-ball with interpolation) introduces artifacts on discrete grids. Chebyshev distance is natural for grid-based parameter sweeps.
+**Implementation:**
+- NDR(d) = mean(Sharpe in d-shell) / Sharpe(p*)
+- CV(d) = std(Sharpe in d-shell) / mean(Sharpe in d-shell)
+- Thresholds: NDR(d=1) > 0.80 = robust, 0.50-0.80 = investigate, < 0.50 = fragile
+- Low NDR + high CV is especially dangerous (some neighbors catastrophic)
+- Location: `pbo.py` or `paramsweep.py`
+
+### D19: Traffic Light Verdict System
+**Decision:** Tiered reporting with GREEN/YELLOW/RED verdicts, no single hard gate.
+**Rationale:** No single metric should be a kill switch. DSR p=0.06 + PBO=0.15 beats DSR p=0.04 + PBO=0.60.
+**Implementation:**
+- GREEN (deploy): DSR p < 0.05 AND PBO < 0.40 AND NDR(d=1) > 0.70 AND permutation p < 0.05
+- YELLOW (investigate): Any one marginal (DSR 0.05-0.10, PBO 0.40-0.55, NDR 0.50-0.70)
+- RED (reject): DSR p > 0.10 OR PBO > 0.55 OR NDR < 0.50
+- Location: `RobustnessReport` class
+
+### D20: CPCV Deferred Until ML Strategies
+**Decision:** Do not implement full CPCV now. PurgedKFold is sufficient.
+**Rationale:** CPCV is ~100x more expensive than PurgedKFold. Only needed when fitting ML classifiers on labeled barriers. Traditional parameter optimization uses PBO/CSCV instead.
+**Implementation:** Existing `PurgedKFold` in `paramsweep.py` remains the CV method.
