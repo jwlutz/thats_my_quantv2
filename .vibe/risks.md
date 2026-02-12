@@ -2,6 +2,18 @@
 
 ## Active Risks
 
+### R3: Options Pricer - BAW Approximation Error
+**Severity:** Low
+**Location:** options_pricer/american.py
+**Description:** Barone-Adesi-Whaley approximation has ~0.1% error vs binomial tree. Users may not realize they're using an approximation.
+**Mitigation:** Documented in docstrings. For precise pricing, use `binomial_tree(steps=500)` instead of `baw_american()`.
+
+### R4: Options Pricer - American IV Performance
+**Severity:** Low
+**Location:** options_pricer/implied_vol.py
+**Description:** American option IV solving uses binomial tree in a root-finding loop, making it 10-50x slower than European IV.
+**Mitigation:** Documented in code. For batch IV calculations on American options, consider using European approximation first.
+
 ### R2: Numba Dependency Optional
 **Severity:** Low
 **Location:** thats_my_quantv1/backtester/vectorized.py:26-30

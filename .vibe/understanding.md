@@ -133,7 +133,7 @@ Same strategy interface, different compute paths. Not parent-child.
 | Polygon integration | ❌ |
 | Survivorship bias / universe snapshots | ❌ |
 | Terminal UI (vibecoded) | ❌ |
-| Options pricer (Black-Scholes) | ❌ Independent mini-project |
+| Options pricer | ✅ European + American + Greeks + IV + live data + 5 plots |
 
 ---
 
@@ -149,7 +149,7 @@ Same strategy interface, different compute paths. Not parent-child.
 
 5. **Polygon data layer** — Check WRDS/CRSP first (free through UCLA, gold standard for survivorship-bias-free data). If access takes >1 week, build against Polygon free tier and swap in CRSP later. DataProvider ABC makes switch painless.
 
-6. **Options pricer** — standalone, anytime, pure math
+6. ~~**Options pricer**~~ ✅ — `options_pricer/` complete (69 tests passing)
 
 ---
 
@@ -194,6 +194,10 @@ Same strategy interface, different compute paths. Not parent-child.
 | Streaming stats | `data_feed/streamprocessor.py` |
 | Multi-symbol router | `data_feed/engine.py` |
 | Candle aggregator | `data_feed/candle.py` |
+| European options | `options_pricer/european.py` |
+| American options | `options_pricer/american.py` |
+| IV solver | `options_pricer/implied_vol.py` |
+| Options visuals | `options_pricer/visuals.py` |
 
 ---
 
