@@ -1,223 +1,174 @@
-# Codebase Understanding
+# Project Understanding
 
-Generated: 2026-02-11
+**Project**: thats_my_quant
+**Updated**: 2026-02-12
 
-## Summary
-A monorepo containing two related quantitative trading projects: `thats_my_quantv1` (a modular transaction-based backtesting framework validated against Backtrader) and `data_feed` (a streaming statistics engine for real-time trading metrics).
+## What It Is
 
-## Architecture
-- **Type**: Python quantitative trading toolkit (backtesting + streaming analytics)
-- **Languages**: Python 3.11+
-- **Entry points**:
-  - `thats_my_quantv1/examples/demo.py` - Backtester demo
-  - `data_feed/engine.py` - Streaming stats engine
-- **Organization**: Two independent subprojects, each with its own git repo
+A quantitative backtesting and trading platform built from scratch. Two sibling projects in this repo:
+- **stone_age** (`data_feed/`) — Streaming statistics engine, the "no AI" learning project
+- **thats_my_quantv1** — Event-driven backtester + vectorized screening engine
+
+Same strategy interface, different compute paths. Not parent-child.
 
 ---
 
-## Components
+## Stone Age Engine (`data_feed/`)
 
-### thats_my_quantv1/backtester
+**Status**: Complete through Phase 6
 
-#### Backtester Engine
-- **Path**: `thats_my_quantv1/backtester/backtester.py`
-- **Purpose**: Main simulation engine that runs strategies over historical data
-- **Key classes**: `Backtester`
-- **Depends on**: Strategy, Portfolio, DataProvider, Results
+| Component | Purpose |
+|-----------|---------|
+| `StreamProcessor` | Welford's running mean/variance, sliding windows, O(1) per tick |
+| Pluggable metrics | `.add_ema()`, `.add_vwap()`, `.add_bollinger()`, `.add_rsi()`, `.add_macd()` — all return refs |
+| `Engine` | Hash map routing, one StreamProcessor per symbol, auto-configured via setup |
+| `CandleAggregator` | OHLCV from raw ticks, timestamp bucketing via `ts // interval * interval` |
+| `AlpacaDataSource` | REST wrapper for historical bars, pagination, .env keys working |
 
-#### Strategy
-- **Path**: `thats_my_quantv1/backtester/strategy.py`
-- **Purpose**: Bundles entry rules, exit rules, position sizer, and universe
-- **Key classes**: `Strategy`
-- **Depends on**: EntryRule, ExitRule, PositionSizer, DataProvider
-
-#### Portfolio
-- **Path**: `thats_my_quantv1/backtester/portfolio.py`
-- **Purpose**: Manages cash, positions (RoundTrips), and transaction history
-- **Key classes**: `Portfolio`
-- **Depends on**: RoundTrip, Transaction, TransactionCost
-
-#### Transaction & RoundTrip
-- **Path**: `thats_my_quantv1/backtester/transaction.py`, `roundtrip.py`
-- **Purpose**: Immutable trade records and position lifecycle tracking (supports DCA, partial exits)
-- **Key classes**: `Transaction` (frozen dataclass), `RoundTrip`
-- **Depends on**: None (base classes)
-
-#### Entry Rules
-- **Path**: `thats_my_quantv1/backtester/entryrule.py`, `calculation.py`, `condition.py`
-- **Purpose**: Composable entry signal generation using Calculation + Condition pattern
-- **Key classes**: `EntryRule`, `CompositeEntryRule`, `Signal`, `Calculation` (ABC), `Condition` (ABC)
-- **Depends on**: DataProvider
-
-#### Exit Rules
-- **Path**: `thats_my_quantv1/backtester/exitrule.py`
-- **Purpose**: Define when to close positions (stop loss, profit target, trailing stop, time-based)
-- **Key classes**: `ExitRule` (ABC), `StopLossExit`, `ProfitTargetExit`, `TrailingStopExit`, `TimeBasedExit`, `CompositeExitRule`
-- **Depends on**: RoundTrip
-
-#### Position Sizers
-- **Path**: `thats_my_quantv1/backtester/positionsizer.py`
-- **Purpose**: Calculate position sizes (fixed dollar, percent portfolio, risk parity, etc.)
-- **Key classes**: `PositionSizer` (ABC), `FixedDollarAmount`, `PercentPortfolio`, `RiskParity`, `EqualWeight`, `FixedShares`
-- **Depends on**: Portfolio
-
-#### Data Provider
-- **Path**: `thats_my_quantv1/backtester/dataprovider.py`, `yfinance_provider.py`
-- **Purpose**: Abstract data interface with yfinance implementation (prices, OHLCV, earnings, fundamentals)
-- **Key classes**: `DataProvider` (ABC), `YFinanceProvider`
-- **Depends on**: yfinance, pandas
-
-#### Results
-- **Path**: `thats_my_quantv1/backtester/results.py`
-- **Purpose**: Performance metrics, visualization, and reporting
-- **Key classes**: `Results`
-- **Depends on**: Portfolio, pandas, matplotlib
+**Tick format**: `{"symbol": "AAPL", "price": 150, "volume": 100, "timestamp": 0}`
 
 ---
 
-### data_feed (Streaming Statistics Engine)
+## Backtester (`thats_my_quantv1/`)
 
-#### StreamProcessor
-- **Path**: `data_feed/streamprocessor.py`
-- **Purpose**: O(1) streaming statistics using Welford's algorithm (mean, variance, std)
-- **Key classes**: `StreamProcessor`, `EMA`, `VWAP`, `BollingerBands`, `RSI`, `MACD`
-- **Depends on**: Candle
+**Status**: Core complete, 786+ tests passing
 
-#### Engine
-- **Path**: `data_feed/engine.py`
-- **Purpose**: Multi-symbol tick router (hash map of symbol -> StreamProcessor)
-- **Key classes**: `Engine`
-- **Depends on**: StreamProcessor
+### Core Components
 
-#### Candle Aggregator
-- **Path**: `data_feed/candle.py`
-- **Purpose**: Aggregate raw ticks into OHLCV candles by time bucket
-- **Key classes**: `Candle`, `CandleAggregator`
-- **Depends on**: None
+| Component | Description |
+|-----------|-------------|
+| `backtester.py` | Event-driven bar-by-bar simulation, 884 lines (manageable, don't decompose) |
+| `RoundTrip` | DCA support, MAE/MFE tracking, `average_fill_price` vs `cost_basis` separation |
+| `FillModel` | ABC with `FixedSlippage`, `VolumeProportional`, `SqrtImpactSlippage` (Almgren σ·√(Q/V)) |
+| `FillTiming` | Enum: `CURRENT_BAR_CLOSE` (default, backward compat), `NEXT_BAR_OPEN` (SME-recommended) |
+| Exit Rules | `Calculation + Condition` pattern (same as entry). `CompositeExitRule` first-to-trigger-wins |
+| `CalculationBasedExit` | Indicator-driven exits: `CalculationBasedExit(RSI(14), GreaterThan(70))` |
+| Position Sizing | `PositionSizer` classes owned by Strategy. Separate PortfolioManager deferred. |
+
+### Vectorized Engine
+
+| Metric | Value |
+|--------|-------|
+| File | `vectorized.py` (~870 lines) |
+| Tests | 69 passing |
+| Total tests | 786+ passing |
+| Cross-engine parity | RSI indicator match, trade count exact, returns within 5%, Sharpe within 0.1 |
 
 ---
 
-## Data Flow
+## Architecture (Three-Tier)
 
-### Backtester Flow
 ```
-Strategy Definition
-       |
-       v
-Backtester.run()
-       |
-       +---> Preload Data (YFinanceProvider)
-       |
-       v
-For each trading day:
-       |
-       +---> Check Exits (ExitRule.should_exit)
-       |         |
-       |         v
-       |     Portfolio.close_position / reduce_position
-       |
-       +---> Generate Signals (EntryRule.should_enter)
-       |         |
-       |         +---> Calculation.calculate()
-       |         +---> Condition.check()
-       |         v
-       |     List[Signal] sorted by priority
-       |
-       +---> Process Entries
-       |         |
-       |         +---> PositionSizer.calculate_shares()
-       |         v
-       |     Portfolio.open_position()
-       |
-       v
-Results (metrics, equity curve, visualizations)
+┌─────────────────────────────────────────────────────────────────┐
+│  ADAPTERS                                                       │
+│  MCP Server | REST API | WebSocket (live UI) | CLI | Python    │
+│  Core never knows who's calling                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  SERVICE                                                        │
+│  Thin API: create_strategy, run_backtest, get_indicators,      │
+│  place_trade                                                    │
+├─────────────────────────────────────────────────────────────────┤
+│  CORE                                                           │
+│  Pure Python library: Engine, indicators, position tracker,     │
+│  strategy runner, backtester                                    │
+│  from thats_my_quant import Engine, Backtest                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Streaming Engine Flow
-```
-Raw Tick Data {symbol, price, volume, timestamp}
-       |
-       v
-Engine.update(tick)
-       |
-       +---> Route to StreamProcessor[symbol]
-       |
-       v
-StreamProcessor.update(tick)
-       |
-       +---> Welford update (mean, variance, M2)
-       +---> Update min/max
-       +---> Update window (if configured)
-       +---> Update attached metrics (EMA, VWAP, RSI, etc.)
-       +---> Update candle aggregator (if attached)
-       |
-       v
-Live Statistics Available
-```
+### Dual Compute Paths
+
+| Path | Use Case | Engine |
+|------|----------|--------|
+| Batch backtesting | Fast screening, parameter sweeps | pandas/numpy vectorized |
+| Live trading / sim | Tick-by-tick, O(1), can't look ahead | stone_age streaming |
+| **Shared** | Strategy interface, position tracker, fill models, results analysis | — |
 
 ---
 
-## Patterns
+## SME Guidance (Locked-In Decisions)
 
-- **Calculation + Condition**: Entry rules separate data extraction (Calculation) from decision logic (Condition) for reusability
-- **Composite Pattern**: `CompositeEntryRule` (AND logic), `CompositeExitRule` (first-match-wins priority)
-- **ABC + Factory**: Abstract base classes with `create_*()` factory functions for YAML serialization
-- **Transaction-based P&L**: Every buy/sell is a `Transaction`; `RoundTrip` groups related transactions for accurate cost basis
-- **Welford's Algorithm**: O(1) streaming mean/variance with numerical stability
-- **Immutable Records**: `Transaction` uses frozen dataclass for data integrity
-- **Caching**: DataProvider caches OHLCV and earnings data for performance
-
----
-
-## Risks
-
-### 🟡 Warning
-
-1. **YFinanceProvider timezone issues** - `get_bar()` returns Series instead of dict when index has duplicates; timezone-aware vs timezone-naive comparison issues in `get_earnings_data()` (documented in [FIXES_NEEDED.md](thats_my_quantv1/additional_docs/FIXES_NEEDED.md))
-
-2. **No look-ahead bias validation** - While the design attempts point-in-time accuracy, there's no automated check to ensure calculations don't accidentally use future data
-
-3. **Single-threaded** - Both backtester and streaming engine are single-threaded; may be bottleneck for large universes or high-frequency data
-
-4. **yfinance rate limits** - Heavy reliance on yfinance which has API rate limits; no offline data storage yet
-
-### 📝 TODOs / Future Ideas
-
-- Phase 4/5 of backtester still to complete (see [to_do.md](thats_my_quantv1/additional_docs/to_do.md))
-- Data feed: Phases 3-8 incomplete (EMA, VWAP, multi-symbol, candle aggregation, live ingestion)
-- Future: vectorize with numba, ML strategies, MCP integration for AI agents
-- Future: survivorship-bias-free data, delisted securities, corporate actions
+| Decision | Rationale |
+|----------|-----------|
+| Fill at next-bar open for daily bars | Same-bar close = lookahead bias |
+| Slippage: σ·√(Q/V) for validation | Fixed for screening, add 10-20bps to vectorized screener |
+| Deflated Sharpe Ratio > Monte Carlo | Primary statistical gate |
+| CPCV > simple walkforward | Combinatorial Purged Cross-Validation |
+| PBO > heatmap eyeballing | Probability of Backtest Overfitting. PBO > 0.5 = overfit |
+| No HMMs for regime detection | Unstable OOS. Observable indicators only. |
+| Survivorship bias awareness | 20%+ CAGR → <8% on momentum strategies |
+| Adjusted prices for backtesting | Unadjusted for price filters and dollar volume sizing |
+| Storage: Parquet + DuckDB | For sweep results |
 
 ---
 
-## Glossary
+## Build Status
 
-- **RoundTrip**: A complete position lifecycle from first entry to final exit, supporting DCA and partial exits
-- **Calculation**: Data extraction component (e.g., `DayChange` extracts `(close-open)/open`)
-- **Condition**: Decision logic component (e.g., `LessThan(-0.02)` checks if value < -2%)
-- **Signal**: Entry signal with ticker, date, type, metadata, and priority
-- **Welford's Algorithm**: Numerically stable online algorithm for computing running mean and variance in O(1)
-- **VWAP**: Volume-Weighted Average Price
-- **EMA**: Exponential Moving Average
-- **DCA**: Dollar Cost Averaging - adding to positions over time
-- **CompositeExitRule**: Priority-ordered exit rules where first match wins
+| Feature | Status |
+|---------|--------|
+| Streaming engine (stone_age) | ✅ Phases 1-6 |
+| Alpaca data source | ✅ |
+| Event-driven backtester | ✅ 786+ tests |
+| FillModel + MAE/MFE | ✅ |
+| Exit rule refactor | ✅ |
+| Fill timing config | ✅ |
+| SqrtImpactSlippage | ✅ |
+| Vectorized screening engine | ✅ 69 tests, cross-engine validated |
+| RSI Calculation class | ✅ Parity proven |
+| Visual checkpoint (matplotlib) | ✅ Results.plot() |
+| Robustness suite (DSR, CPCV, PBO) | ❌ |
+| Monte Carlo / bootstrap | ❌ |
+| Regime tagger | ❌ |
+| Parameter sweep + PBO | ❌ (paramsweep.py exists, needs PBO) |
+| MCP server | ❌ |
+| Position sizing as separate layer | ⚠️ Partial |
+| Adjusted vs unadjusted prices | ❌ Data layer |
+| Polygon integration | ❌ |
+| Survivorship bias / universe snapshots | ❌ |
+| Terminal UI (vibecoded) | ❌ |
+| Options pricer (Black-Scholes) | ❌ Independent mini-project |
 
 ---
 
-## Test Coverage
+## Build Order From Here
 
-| Component | Tests | Status |
-|-----------|-------|--------|
-| Transaction | 21 | Passing |
-| RoundTrip | 40+ | Passing |
-| TransactionCost | 40+ | Passing |
-| Portfolio | 33 | Passing |
-| YFinanceProvider | 37 | Passing |
-| Calculation | 39 | Passing |
-| Condition | 44 | Passing |
-| EntryRule | 27 | Passing |
-| ExitRule | 57 | Passing |
-| **Total** | **379** | **100%** |
+1. ~~**Visual checkpoint**~~ ✅ `Results.plot()` implemented — unified 2-panel dashboard (equity + drawdown)
+
+2. **Robustness suite** — DSR (primary gate), permutation test (quick filter), bootstrap CI (drawdown risk), PBO + neighborhood degradation (parameter robustness), CPCV (serious validation), WFE diagnostic **← Next up**
+
+3. **MCP server** — Use official `mcp` Python SDK (FastMCP). Service layer emerges naturally from "what tools does Claude need?" Build as `thats_my_quant/service/` when needed.
+
+4. **Terminal UI** — vibecoded React + lightweight-charts. Chat left, chart right.
+
+5. **Polygon data layer** — Check WRDS/CRSP first (free through UCLA, gold standard for survivorship-bias-free data). If access takes >1 week, build against Polygon free tier and swap in CRSP later. DataProvider ABC makes switch painless.
+
+6. **Options pricer** — standalone, anytime, pure math
+
+---
+
+## Architecture Decisions (2026-02-12)
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Repo structure | Monorepo | stone_age + thats_my_quantv1 stay together |
+| Visual checkpoint | `Results.plot()` method | Already has matplotlib, one call away |
+| Data source priority | WRDS/CRSP → Polygon fallback | CRSP is gold standard, free through UCLA |
+| Service layer | Defer to MCP phase | Design emerges from "what tools does Claude need?" |
+| MCP framework | Official `mcp` SDK (FastMCP) | Handles JSON-RPC, no value in rolling own |
+| Service location | `thats_my_quant/service/` | When built, inside monorepo |
+
+---
+
+## Product Vision
+
+**thats_my_quant** = natural language → strategy → backtest → execution
+
+- Streaming-native (same code path backtest and live)
+- Transparent engine (not a black box)
+- Target audience: students and aspiring quants
+
+**Revenue model**:
+- Subscription: $10-20/mo students, $50+ serious
+- Future: opt-in prop desk model (user shares strategy, you allocate capital, split profits)
 
 ---
 
@@ -225,11 +176,29 @@ Live Statistics Available
 
 | Purpose | File |
 |---------|------|
-| Main engine | `thats_my_quantv1/backtester/backtester.py` |
+| Main backtester | `thats_my_quantv1/backtester/backtester.py` |
+| Vectorized engine | `thats_my_quantv1/backtester/vectorized.py` |
 | Strategy definition | `thats_my_quantv1/backtester/strategy.py` |
+| Exit rules | `thats_my_quantv1/backtester/exitrule.py` |
+| Fill models | `thats_my_quantv1/backtester/fill_model.py` |
+| RSI Calculation | `thats_my_quantv1/backtester/calculation.py` |
 | Public API | `thats_my_quantv1/backtester/__init__.py` |
-| Example usage | `thats_my_quantv1/examples/demo.py` |
-| Spec/design doc | `thats_my_quantv1/SPEC.md` |
 | Streaming stats | `data_feed/streamprocessor.py` |
 | Multi-symbol router | `data_feed/engine.py` |
-| Project config | `thats_my_quantv1/pyproject.toml` |
+| Candle aggregator | `data_feed/candle.py` |
+
+---
+
+## Glossary
+
+| Term | Definition |
+|------|------------|
+| RoundTrip | Complete position lifecycle from first entry to final exit, supports DCA and partial exits |
+| Calculation | Data extraction component (e.g., `RSI(14)` computes RSI value) |
+| Condition | Decision logic component (e.g., `GreaterThan(70)`) |
+| Welford's Algorithm | Numerically stable online algorithm for running mean/variance in O(1) |
+| DSR | Deflated Sharpe Ratio — adjusts for multiple testing |
+| CPCV | Combinatorial Purged Cross-Validation |
+| PBO | Probability of Backtest Overfitting |
+| MAE/MFE | Maximum Adverse/Favorable Excursion |
+| WFE | Walk-Forward Efficiency |
