@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "thats_my_quant": {
+      "command": "C:/Users/jackw/AppData/Local/Programs/Python/Python313/python.exe",
+      "args": [
+        "C:/Users/jackw/Desktop/Projects/backtester/thats_my_quantv1/service/mcp_server.py"
+      ]
+    }
+  }
+}

@@ -25,7 +25,7 @@ class EuropeanGreeks:
 
 def _d1_d2(S: float, K: float, T: float, r: float, sigma: float, q: float = 0) -> tuple[float, float]:
     """Calculate d1 and d2 for Black-Scholes formula."""
-    if T <= 0 or sigma <= 0:
+    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         return np.nan, np.nan
 
     sqrt_T = np.sqrt(T)

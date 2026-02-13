@@ -127,7 +127,7 @@ Same strategy interface, different compute paths. Not parent-child.
 | Neighborhood Degradation | ✅ `pbo.py` | NDR at d=1 and d=2 |
 | RobustnessVerdict | ✅ `pbo.py` | Traffic light system (GREEN/YELLOW/RED) |
 | CPCV (OOS Performance Estimation) | ✅ `pbo.py` | 12,870 paths for tight CIs |
-| MCP server | ❌ |
+| MCP server | ⚠️ Partial | `backtest` tool done, `validate`/`scan`/`plot` pending |
 | Position sizing as separate layer | ⚠️ Partial |
 | Adjusted vs unadjusted prices | ❌ Data layer |
 | Polygon integration | ❌ |
@@ -198,6 +198,8 @@ Same strategy interface, different compute paths. Not parent-child.
 | American options | `options_pricer/american.py` |
 | IV solver | `options_pricer/implied_vol.py` |
 | Options visuals | `options_pricer/visuals.py` |
+| MCP server | `thats_my_quantv1/service/mcp_server.py` |
+| MCP state | `thats_my_quantv1/service/state.py` |
 
 ---
 

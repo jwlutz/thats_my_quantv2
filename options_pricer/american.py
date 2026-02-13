@@ -52,6 +52,9 @@ def binomial_tree(
         else:
             return max(K - S, 0)
 
+    if S <= 0 or K <= 0 or sigma <= 0:
+        return np.nan
+
     dt = T / steps
     u = np.exp(sigma * np.sqrt(dt))  # up factor
     d = 1 / u                         # down factor
@@ -118,6 +121,9 @@ def baw_american(
             return max(S - K, 0)
         else:
             return max(K - S, 0)
+
+    if S <= 0 or K <= 0 or sigma <= 0:
+        return np.nan
 
     # Get European price first
     european_price = black_scholes(S, K, T, r, sigma, q, option_type)

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python backtester_audit.py:*)",
+      "Bash(pip show:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(findstr:*)",
+      "Bash(Select-String -Pattern \"mcp\" -CaseSensitive:$false)",
+      "Bash(\"C:\\\\Users\\\\jackw\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python311\\\\python.exe\" -m pip install:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "thats_my_quant"
+  ]
+}
